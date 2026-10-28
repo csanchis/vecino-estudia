@@ -140,6 +140,9 @@ mark.pag{background:none;color:var(--muted);font-size:.8em;white-space:nowrap;fo
 .pick{display:flex;flex-wrap:wrap;gap:6px}
 .pick label{font-size:.82rem;border:1px solid var(--line);border-radius:999px;padding:3px 10px;cursor:pointer;background:var(--surface);display:inline-flex;gap:6px;align-items:center}
 .pick input{margin:0;accent-color:var(--accent)}
+.pickgrp{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}
+.pickgrp>span{font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--fg2);font-weight:600;min-width:6.5em}
+.units{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px}
 .pick label:has(input:checked){border-color:var(--fg);background:var(--accent-soft)}
 
 /* test */
@@ -172,7 +175,7 @@ table.hist td,table.hist th{padding:5px 8px;border-bottom:1px solid var(--grid);
   <header>
     <div class="eyebrow">Oposición Bombero/a · Ajuntament de València</div>
     <h1>Para que el vecino estudie</h1>
-    <p class="meta" id="hdrmeta">Temario: Manual Básico IVASPE para bomberos de nuevo ingreso (2017), 21 temas, 2.316 págs. Cada dato, pregunta y tarjeta cita su página del manual.</p>
+    <p class="meta" id="hdrmeta">Temario oficial: Decreto 163/2019 del Consell (Anexo II, Bombero/a), temas G1–G11 y 1–33, más los temas 34–44 propios de València. Material: Manual Básico IVASPE (2017, 21 capítulos, 2.316 págs.). Cada dato, pregunta y tarjeta cita su página del manual.</p>
     <nav class="tabs" aria-label="Secciones">
       <a href="#plan" data-v="plan">Plan</a>
       <a href="#temario" data-v="temario">Temario</a>
@@ -211,9 +214,9 @@ table.hist td,table.hist th{padding:5px 8px;border-bottom:1px solid var(--grid);
     <div class="row between"><h2>Temario</h2><input class="search" id="buscar" type="search" placeholder="Buscar en esquemas y datos de todos los temas (p. ej. «BLEVE», «Glasgow», «6 kN»)" style="max-width:520px"></div>
     <div id="busqueda" hidden></div>
     <div id="temagrid"></div>
-    <h2>Temario oficial (55 temas)</h2>
-    <p class="fg2">Bases de 2025: Anexo II del Decreto 163/2019 más 11 temas propios del SPEIS de València. Para cada tema oficial, qué unidades del plan lo cubren${"" }.</p>
-    <div class="tbl"><table class="hist" id="oficialtbl"></table></div>
+    <h2>Manual IVASPE por capítulos</h2>
+    <p class="fg2">El material de estudio. Sus 21 capítulos no siguen la numeración oficial: cada tema oficial indica qué capítulos y páginas lo cubren.</p>
+    <div id="capgrid"></div>
   </section>
 
   <section class="view" id="v-tema" hidden></section>
@@ -368,17 +371,18 @@ function rerender(srsOnly){
   if (!srsOnly && v === "plan") renderPlan();
   if (v === "temario") renderTemario();
   if (v === "repaso") renderFcInfo();
-  if (v && v.startsWith("tema")) renderTemaHead();
+  if (v && /^tema\d\d$/.test(v)) renderTemaHead();
+  if (v && v.startsWith("of-")) renderOfHead();
 }
 
 // ---------- rutas ----------
 function route(){
   const h = (location.hash || "#plan").slice(1);
-  const v = /^tema\d\d$/.test(h) ? h : (["plan","temario","repaso","test","notas"].includes(h) ? h : "plan");
+  const v = /^tema\d\d$/.test(h) || /^of-(G\d{1,2}|\d{1,2}|X)$/.test(h) ? h : (["plan","temario","repaso","test","notas"].includes(h) ? h : "plan");
   lastView = v;
   $$("section.view").forEach(s => s.hidden = true);
   $$("nav.tabs a").forEach(a => a.removeAttribute("aria-current"));
-  if (v.startsWith("tema")){ $("#v-tema").hidden = false; $('nav.tabs a[data-v="temario"]').setAttribute("aria-current","page"); renderTema(+v.slice(4)); }
+  if (/^tema\d\d$/.test(v) || v.startsWith("of-")){ $("#v-tema").hidden = false; $('nav.tabs a[data-v="temario"]').setAttribute("aria-current","page"); if (v.startsWith("of-")) renderOf(v.slice(3)); else renderTema(+v.slice(4)); }
   else { $("#v-" + v).hidden = false; $(`nav.tabs a[data-v="${v}"]`).setAttribute("aria-current","page");
     ({plan:renderPlan, temario:renderTemario, repaso:renderRepaso, test:renderTestSetup, notas:renderNotas})[v](); }
   window.scrollTo(0,0);
@@ -422,9 +426,9 @@ function renderPlan(){
     return `<li draggable="true" data-id="${id}" class="${["estudiado","dominado"].includes(st) ? "done" : ""}">
       <span class="num" title="Arrastra para mover">${i+1}</span>
       <div class="body">
-        <div class="ttl">${u.tema ? `<a href="#tema${String(u.tema).padStart(2,"0")}">Manual T${u.tema}${u.parte ? "·" + esc(u.parte) : ""}</a>` : `<span class="muted">Fuera del manual</span>`} — ${esc(u.titulo)}</div>
+        <div class="ttl">${u.oficial.map(k => `<a href="#of-${esc(k)}" title="${esc(C.oficial[k] || "")}">Tema ${esc(k)}</a>`).join(" · ")} — ${esc(u.titulo)}</div>
         <div class="sub"><span class="week">${wk}</span><span>${fmt(s.ini)} – ${fmt(s.fin)}</span><span>${u.horas} h</span>${u.paginas ? `<span>págs. ${esc(u.paginas)}</span>` : ""}${u.prioridad ? `<span class="chip ${u.prioridad === "alta" ? "acad" : ""}" title="${u.preguntas_examen} preguntas en los exámenes reales de 2018, 2022 y 2026">prioridad ${esc(u.prioridad)}</span>` : ""}</div>
-        <div class="sub">${u.oficial.map(k => `<span class="mono" title="${esc(C.oficial[k] || "")}">T.of. ${esc(k)}</span>`).join("")}${u.fuente === "externo" ? `<span>Material: ${esc(u.material)}${u.estado_material === "pendiente" ? " · <b>por conseguir</b>" : ""}</span>` : ""}</div>
+        <div class="sub">${u.tema ? `<a href="#tema${String(u.tema).padStart(2,"0")}">Manual IVASPE, cap. ${u.tema}${u.parte ? "·" + esc(u.parte) : ""}</a>` : `<span class="muted">Fuera del manual</span>`}${u.fuente === "externo" ? `<span>Material: ${esc(u.material)}${u.estado_material === "pendiente" ? " · <b>por conseguir</b>" : ""}</span>` : ""}</div>
         ${u.motivo ? `<div class="sub">${esc(u.motivo)}</div>` : ""}
         <div class="note"><textarea data-note="${id}" placeholder="Nota (opcional)" aria-label="Nota de la unidad">${esc(plan.notas[id] || "")}</textarea></div>
       </div>
@@ -464,37 +468,47 @@ $("#hsem").addEventListener("change", e => { plan.horasSemana = Math.max(4, Math
 $('[data-act="reset"]').addEventListener("click", () => { plan.orden = C.unidades.map(u => u.id); savePlan(); renderPlan(); toast("Orden propuesto restaurado (estados y notas se mantienen)"); });
 
 // ---------- TEMARIO ----------
-function temaEstado(n){
-  const us = C.unidades.filter(u => u.tema === n).map(u => plan.estado[u.id] || "pendiente");
+function temaEstado(n){ return estadoDe(C.unidades.filter(u => u.tema === n)); }
+function ofEstado(k){ return estadoDe(C.unidades.filter(u => u.oficial.includes(k))); }
+function estadoDe(units){
+  const us = units.map(u => plan.estado[u.id] || "pendiente");
   if (!us.length) return "pendiente";
   if (us.every(s => s === "dominado")) return "dominado";
   if (us.every(s => ["estudiado","dominado"].includes(s))) return "estudiado";
   if (us.some(s => s !== "pendiente")) return "estudiando";
   return "pendiente";
 }
-function cardStats(n){
-  const t = temaOf(n); if (!t) return {tot:0, due:0, dom:0};
-  const st = (srs["t" + String(n).padStart(2,"0")] || {}).c || {}; const d = today();
-  let due = 0, dom = 0;
-  t.cards.forEach(c => { const s = st[c.id]; if (!s || s.d <= d) due++; if (s && s.b >= 4) dom++; });
-  return {tot: t.cards.length, due, dom};
+// las tarjetas se guardan por capítulo del manual (srs["tNN"]); c.n es su capítulo
+function cardStatsList(cards){
+  const d = today(); let due = 0, dom = 0;
+  cards.forEach(c => { const s = ((srs["t" + String(c.n).padStart(2,"0")] || {}).c || {})[c.id]; if (!s || s.d <= d) due++; if (s && s.b >= 4) dom++; });
+  return {tot: cards.length, due, dom};
 }
-function renderOficial(){
-  const fr = C.frecuencia || {};
-  const tot = Object.values(fr).reduce((a, b) => a + b, 0);
-  $("#oficialtbl").innerHTML = `<tr><th>Tema</th><th>Contenido</th><th>Unidades del plan</th>${tot ? "<th>Preg. en exámenes reales</th>" : ""}</tr>` +
-    Object.entries(C.oficial).map(([k, t]) => {
-      const us = C.unidades.filter(u => u.oficial.includes(k));
-      return `<tr><td class="mono">${esc(k)}</td><td>${esc(t)}</td><td>${us.map(u => u.tema ? `<a href="#tema${String(u.tema).padStart(2,"0")}">T${u.tema}${u.parte ? "·" + u.parte : ""}</a>` : `<span class="muted">${esc(u.titulo.slice(0, 40))}</span>`).join(", ")}</td>${tot ? `<td>${fr[k] || 0}</td>` : ""}</tr>`;
-    }).join("");
+function cardStats(n){ const t = temaOf(n); return t ? cardStatsList(t.cards.map(c => ({...c, n}))) : {tot:0, due:0, dom:0}; }
+
+// ---------- temario oficial: cada pregunta y tarjeta lleva su tema (of) y, si cubre otros, of2 ----------
+const tagsOf = it => [it.of, ...(it.of2 || [])];
+const itemsOf = (kind, keys) => { const s = new Set(keys); return C.temas.flatMap(t => t[kind].filter(it => tagsOf(it).some(k => s.has(k))).map(it => ({...it, n: t.n}))); };
+let OFC = null;  // tema oficial -> {q, c}
+function ofCount(k){
+  if (!OFC){ OFC = {}; for (const t of C.temas) for (const [kind, f] of [["preguntas","q"],["cards","c"]]) for (const it of t[kind]) for (const x of tagsOf(it)) if (x){ OFC[x] ||= {q:0, c:0}; OFC[x][f]++; } }
+  return OFC[k] || {q:0, c:0};
 }
+const conMaterial = () => C.bloques.flatMap(b => b.temas).filter(k => ofCount(k).q + ofCount(k).c);
 function renderTemario(){
-  renderOficial();
+  const fr = C.frecuencia || {};
+  $("#temagrid").innerHTML = C.bloques.map(b => `<div class="mod">${esc(b.nombre)}</div><div class="grid">` + b.temas.map(k => {
+    const st = ofEstado(k), cnt = ofCount(k), cs = cardStatsList(itemsOf("cards", [k]));
+    return `<a class="tcard ${cnt.q + cnt.c ? "" : "missing"}" href="#of-${k}">
+      <div class="row between"><span class="n">${k}</span><span class="chip ${st}"><i></i>${ESTADO_TXT[st]}</span></div>
+      <div class="t">${esc(C.oficial[k])}</div>
+      <div class="m"><span>${cnt.q + cnt.c ? `${cnt.q} preg. · ${cs.dom}/${cs.tot} tarjetas dominadas` : "sin preguntas aún"}</span><span>${fr[k] || 0} en exámenes reales</span></div></a>`;
+  }).join("") + `</div>`).join("");
   const mods = C.modulos;
-  $("#temagrid").innerHTML = mods.map(m => `<div class="mod">${esc(m.nombre)}</div><div class="grid">` + m.temas.map(n => {
+  $("#capgrid").innerHTML = mods.map(m => `<div class="mod">${esc(m.nombre)}</div><div class="grid">` + m.temas.map(n => {
     const t = temaOf(n), meta = C.indice.find(x => x.n === n), st = temaEstado(n), cs = cardStats(n);
     return `<a class="tcard ${t ? "" : "missing"}" href="#tema${String(n).padStart(2,"0")}">
-      <div class="row between"><span class="n">${n}</span><span class="chip ${st}"><i></i>${ESTADO_TXT[st]}</span></div>
+      <div class="row between"><span class="n">Cap. ${n}</span><span class="chip ${st}"><i></i>${ESTADO_TXT[st]}</span></div>
       <div class="t">${esc(meta.titulo)}</div>
       <div class="m"><span>págs. ${meta.ini}–${meta.fin}</span><span>${t ? `${t.preguntas.length} preg. · ${cs.dom}/${cs.tot} tarjetas dominadas` : "en preparación"}</span></div></a>`;
   }).join("") + `</div>`).join("");
@@ -506,38 +520,70 @@ function doSearch(q){
   if (q.length < 3){ box.hidden = true; $("#temagrid").hidden = false; return; }
   const ql = q.toLowerCase(), res = [];
   for (const t of C.temas) for (const k of ["datos","esquema","confusiones"]) for (const line of t[k].split("\n")) if (line.toLowerCase().includes(ql)) res.push({t, k, line});
-  for (const t of C.temas) for (const c of t.cards) if ((c.p + " " + c.r).toLowerCase().includes(ql)) res.push({t, k:"tarjeta", line: c.p + " → " + c.r});
+  for (const t of C.temas) for (const c of t.cards) if ((c.p + " " + c.r).toLowerCase().includes(ql)) res.push({t, k:"tarjeta", of: c.of, line: c.p + " → " + c.r});
   box.hidden = false; $("#temagrid").hidden = true;
   box.innerHTML = `<p class="status">${res.length} resultados${res.length > 120 ? " (se muestran 120)" : ""}</p>` + res.slice(0,120).map(r =>
-    `<div class="tq"><div class="eyebrow"><a href="#tema${String(r.t.n).padStart(2,"0")}">Tema ${r.t.n}</a> · ${r.k}</div><div class="md">${md(r.line.replace(/^\s*[-*]\s*/, ""))}</div></div>`).join("");
+    `<div class="tq"><div class="eyebrow">${r.of ? `<a href="#of-${esc(r.of)}">Tema ${esc(r.of)}</a> · ` : ""}<a href="#tema${String(r.t.n).padStart(2,"0")}">Manual, cap. ${r.t.n}</a> · ${r.k}</div><div class="md">${md(r.line.replace(/^\s*[-*]\s*/, ""))}</div></div>`).join("");
 }
 
 // ---------- TEMA ----------
 let temaTab = "esquema";
 function renderTema(n){
   const t = temaOf(n), meta = C.indice.find(x => x.n === n), v = $("#v-tema");
-  if (!t){ v.innerHTML = `<a href="#temario">← Temario</a><h2>Tema ${n} — ${esc(meta.titulo)}</h2><p class="fg2">El análisis de este tema aún se está preparando.</p>`; return; }
+  if (!t){ v.innerHTML = `<a href="#temario">← Temario</a><h2>Manual IVASPE, capítulo ${n} — ${esc(meta.titulo)}</h2><p class="fg2">El análisis de este tema aún se está preparando.</p>`; return; }
   const tabs = [["esquema","Esquema"],["datos","Datos que caen"],["confusiones","Confusiones"],["ficha","Ficha"]].concat(t.avisos ? [["avisos","Avisos"]] : []);
   if (!tabs.some(x => x[0] === temaTab)) temaTab = "esquema";
   v.innerHTML = `<a href="#temario">← Temario</a>
     <div id="temahead"></div>
-    <div class="row">
-      <button class="primary" data-go="fc">Flashcards del tema</button>
-      <button data-go="test">Test del tema</button>
-      <button data-go="comment" id="cbtn" hidden>Comentar este tema</button>
+    <div class="row"><span class="fg2">Temas oficiales que cubre:</span>${capOficial(n).map(k => `<a class="chip" href="#of-${esc(k)}" title="${esc(C.oficial[k] || "")}">Tema ${esc(k)}</a>`).join("")}
+      <button data-go="comment" id="cbtn" hidden>Comentar este capítulo</button>
     </div>
     <div class="subtabs" role="tablist">${tabs.map(([k,l]) => `<button role="tab" data-tab="${k}" aria-selected="${k===temaTab}">${l}</button>`).join("")}</div>
     <div class="panel md" id="temabody" data-comment-target>${md(t[temaTab])}</div>`;
   renderTemaHead();
   v.querySelector(".subtabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (!b) return; temaTab = b.dataset.tab; renderTema(n); });
-  v.querySelector('[data-go="fc"]').addEventListener("click", () => { fcPre = [n]; location.hash = "repaso"; });
-  v.querySelector('[data-go="test"]').addEventListener("click", () => { tPre = [n]; location.hash = "test"; });
   initComment(v.querySelector("#cbtn"), v.querySelector("#temabody"));
+}
+// temas oficiales a los que se han asignado preguntas o tarjetas de este capítulo, ordenados por cantidad
+function capOficial(n){
+  const t = temaOf(n), cnt = {};
+  if (t) for (const it of t.preguntas.concat(t.cards)) if (it.of) cnt[it.of] = (cnt[it.of] || 0) + 1;
+  return Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]);
+}
+
+// ---------- TEMA OFICIAL ----------
+function renderOf(k){
+  const v = $("#v-tema"), lit = (C.oficial_literal || {})[k];
+  if (!lit){ v.innerHTML = `<a href="#temario">← Temario</a><p class="fg2">Ese tema no existe en el temario oficial.</p>`; return; }
+  const b = C.bloques.find(x => x.temas.includes(k)), cnt = ofCount(k), fr = (C.frecuencia || {})[k] || 0;
+  const us = C.unidades.filter(u => u.oficial.includes(k));
+  const caps = C.temas.filter(t => t.preguntas.concat(t.cards).some(it => tagsOf(it).includes(k))).map(t => t.n);
+  v.innerHTML = `<a href="#temario">← Temario</a>
+    <div id="temahead"></div>
+    <div class="soft"><b>Texto oficial</b><p>${esc(lit)}</p><span class="status">${esc(b.nombre)}</span></div>
+    <div class="row">
+      <button class="primary" data-go="fc" ${cnt.c ? "" : "disabled"}>Flashcards del tema</button>
+      <button data-go="test" ${cnt.q ? "" : "disabled"}>Test del tema</button>
+      <span class="status">${fr} preguntas de este tema en los exámenes reales de 2018, 2022 y 2026</span>
+    </div>
+    <div class="panel"><b>Dónde se estudia</b>
+      ${us.length ? `<ul class="units">${us.map(u => `<li>${u.tema ? `<a href="#tema${String(u.tema).padStart(2,"0")}">Manual IVASPE, cap. ${u.tema}${u.parte ? "·" + esc(u.parte) : ""}</a>${u.paginas ? `, págs. ${esc(u.paginas)}` : ""}` : `<b>${esc(u.material)}</b>${u.estado_material === "pendiente" ? " · por conseguir" : ""}`} — ${esc(u.titulo)}</li>`).join("")}</ul>` : `<p class="fg2">Ninguna unidad del plan lo cubre todavía.</p>`}
+      ${caps.length ? `<p class="status">Las preguntas y tarjetas de este tema salen de: ${caps.map(n => `<a href="#tema${String(n).padStart(2,"0")}">cap. ${n}</a>`).join(", ")} del manual.</p>` : ""}
+    </div>`;
+  renderOfHead();
+  v.querySelector('[data-go="fc"]').addEventListener("click", () => { fcPre = [k]; location.hash = "repaso"; });
+  v.querySelector('[data-go="test"]').addEventListener("click", () => { tPre = [k]; location.hash = "test"; });
+}
+function renderOfHead(){
+  const k = lastView.slice(3), h = $("#temahead"); if (!h || !C.oficial[k]) return;
+  const st = ofEstado(k), cnt = ofCount(k), cs = cardStatsList(itemsOf("cards", [k]));
+  h.innerHTML = `<div class="eyebrow">Tema ${esc(k)}</div><h2>${esc(C.oficial[k])}</h2>
+    <div class="row"><span class="chip ${st}"><i></i>${ESTADO_TXT[st]}</span><span class="status">${cnt.q} preguntas · ${cs.tot} tarjetas · ${cs.due} para repasar hoy · ${cs.dom} dominadas</span></div>`;
 }
 function renderTemaHead(){
   const n = +lastView.slice(4), t = temaOf(n), h = $("#temahead"); if (!t || !h) return;
   const st = temaEstado(n), cs = cardStats(n);
-  h.innerHTML = `<div class="eyebrow">Tema ${n} · ${esc(t.paginas)}</div><h2>${esc(t.titulo)}</h2>
+  h.innerHTML = `<div class="eyebrow">Manual IVASPE · capítulo ${n} · ${esc(t.paginas)}</div><h2>${esc(t.titulo)}</h2>
     <div class="row"><span class="chip ${st}"><i></i>${ESTADO_TXT[st]}</span><span class="status">${t.preguntas.length} preguntas · ${cs.tot} tarjetas · ${cs.due} para repasar hoy · ${cs.dom} dominadas</span></div>`;
 }
 let commentsCap;
@@ -550,10 +596,14 @@ async function initComment(btn, target){
 
 // ---------- selector de temas ----------
 function pickHTML(name, sel){
-  return C.temas.map(t => `<label><input type="checkbox" name="${name}" value="${t.n}" ${sel.includes(t.n) ? "checked" : ""}> ${t.n}</label>`).join("");
+  const con = new Set(conMaterial());
+  return C.bloques.map(b => { const ks = b.temas.filter(k => con.has(k)); return ks.length ? `<div class="pickgrp"><span>${esc(b.corto)}</span>` +
+    ks.map(k => `<label title="${esc(C.oficial[k] || "")}"><input type="checkbox" name="${name}" value="${esc(k)}" ${sel.includes(k) ? "checked" : ""}> ${esc(k)}</label>`).join("") + `</div>` : ""; }).join("");
 }
-const studied = () => C.temas.map(t => t.n).filter(n => temaEstado(n) !== "pendiente");
-const picked = name => $$(`input[name="${name}"]:checked`).map(i => +i.value);
+const studied = () => conMaterial().filter(k => ofEstado(k) !== "pendiente");
+const picked = name => $$(`input[name="${name}"]:checked`).map(i => i.value);
+// las selecciones guardadas antes eran capítulos del manual (números): se ignoran
+const loadSel = k => { const v = loadLocal(k, null); return Array.isArray(v) && v.every(x => typeof x === "string") ? v : null; };
 
 // ---------- FLASHCARDS ----------
 let fcPre = null, fcSession = null;
@@ -585,28 +635,25 @@ document.addEventListener("click", async e => {
 });
 const gapBroma = () => 8 + Math.floor(Math.random() * 5);
 function renderRepaso(){
-  const sel = fcPre || loadLocal("fcsel", null) || (studied().length ? studied() : C.temas.slice(0,1).map(t => t.n));
+  const sel = fcPre || loadSel("fcsel") || (studied().length ? studied() : conMaterial().slice(0,1));
   fcPre = null;
   $("#fcpick").innerHTML = pickHTML("fc", sel);
   renderFcInfo();
   if (!fcSession) $("#fcarea").innerHTML = "";
 }
 function renderFcInfo(){
-  const sel = picked("fc"); let tot = 0, due = 0, dom = 0;
-  sel.forEach(n => { const s = cardStats(n); tot += s.tot; due += s.due; dom += s.dom; });
+  const sel = picked("fc"), {tot, due, dom} = cardStatsList(itemsOf("cards", sel));
   $("#fcinfo").textContent = sel.length ? `${tot} tarjetas en ${sel.length} temas · ${due} tocan hoy · ${dom} dominadas (caja 4–5)` : "Elige al menos un tema.";
 }
 $("#fcpick").addEventListener("change", () => { saveLocal("fcsel", picked("fc")); renderFcInfo(); });
 $$("[data-sel]").forEach(b => b.addEventListener("click", () => {
-  const m = b.dataset.sel, s = m === "todos" ? C.temas.map(t => t.n) : m === "ninguno" ? [] : studied();
+  const m = b.dataset.sel, s = m === "todos" ? conMaterial() : m === "ninguno" ? [] : studied();
   $("#fcpick").innerHTML = pickHTML("fc", s); saveLocal("fcsel", s); renderFcInfo();
 }));
 $("#fcstart").addEventListener("click", () => {
   const sel = picked("fc"), mode = $('input[name="fcmode"]:checked').value, d = today();
-  let cards = [];
-  sel.forEach(n => { const t = temaOf(n), st = (srs["t" + String(n).padStart(2,"0")] || {}).c || {};
-    t.cards.forEach(c => { const s = st[c.id];
-      if (mode === "all" || (mode === "due" && (!s || s.d <= d)) || (mode === "weak" && s && s.f > 0 && s.b <= 2)) cards.push({...c, n}); }); });
+  const cards = itemsOf("cards", sel).filter(c => { const s = ((srs["t" + String(c.n).padStart(2,"0")] || {}).c || {})[c.id];
+    return mode === "all" || (mode === "due" && (!s || s.d <= d)) || (mode === "weak" && s && s.f > 0 && s.b <= 2); });
   cards.sort(() => Math.random() - .5);
   if (!cards.length){ toast(mode === "due" ? "No hay tarjetas pendientes hoy en esos temas" : "No hay tarjetas con ese filtro"); return; }
   fcSession = {cards, i: 0, shown: false, ok: 0, bad: 0, next: gapBroma(), broma: null}; drawCard();
@@ -627,7 +674,7 @@ function drawCard(){
   }
   const c = s.cards[s.i], st = ((srs["t" + String(c.n).padStart(2,"0")] || {}).c || {})[c.id];
   a.innerHTML = `<div class="fc" data-comment-target>
-      <div class="meta">Tema ${c.n} · tarjeta ${s.i+1}/${s.cards.length} · caja ${st ? st.b : "nueva"}</div>
+      <div class="meta">Tema ${esc(c.of)} · tarjeta ${s.i+1}/${s.cards.length} · caja ${st ? st.b : "nueva"}</div>
       <div class="q">${esc(c.p)}</div>
       ${s.shown ? `<div class="a md">${md(c.r)}</div>` : ""}
     </div>
@@ -659,7 +706,7 @@ addEventListener("keydown", e => {
 // ---------- TEST ----------
 let tPre = null, tCur = null;
 function renderTestSetup(){
-  const sel = tPre || loadLocal("tsel", null) || (studied().length ? studied() : C.temas.map(t => t.n));
+  const sel = tPre || loadSel("tsel") || (studied().length ? studied() : conMaterial());
   tPre = null;
   $("#tpick").innerHTML = pickHTML("tp", sel);
   if (C.formato) $("#formatnote").textContent = C.formato;
@@ -675,16 +722,16 @@ async function renderReal(){
 $("#realstart").addEventListener("click", () => {
   const e = EX.examenes[+$("#realsel").value];
   const qs = e.preguntas.map(p => ({id: `${e.id}-${p.num}`, q: p.q, o: p.o, ok: p.anulada ? null : p.ok, real: true, tof: p.tema_oficial,
-    j: [p.fuente ? "Fuente: " + p.fuente : "", p.tema_manual && p.pag ? `Manual T${p.tema_manual}, pág. ${p.pag}` : "", p.nota || ""].filter(Boolean).join(" · ")}));
+    j: [p.fuente ? "Fuente: " + p.fuente : "", p.tema_manual && p.pag ? `Manual IVASPE, cap. ${p.tema_manual}, pág. ${p.pag}` : "", p.nota || ""].filter(Boolean).join(" · ")}));
   tCur = {qs, ans: {}, done: false, pen: 1/3, temas: [e.id], t0: Date.now(), real: e.id};
   drawTest(); window.scrollTo(0, $("#tarea").offsetTop);
 });
-const allQ = sel => sel.flatMap(n => temaOf(n).preguntas.map(q => ({...q, n})));
+const allQ = sel => itemsOf("preguntas", sel);
 const failedIds = () => { const s = new Set(); tests.forEach(t => (t.fallos || []).forEach(id => s.add(id))); tests.forEach(t => (t.aciertos || []).forEach(id => s.delete(id))); return s; };
 function tInfo(){ const sel = picked("tp"); $("#tinfo").textContent = sel.length ? `${allQ(sel).length} preguntas disponibles en ${sel.length} temas` : "Elige al menos un tema."; }
 $("#tpick").addEventListener("change", () => { saveLocal("tsel", picked("tp")); tInfo(); });
 $$("[data-tsel]").forEach(b => b.addEventListener("click", () => {
-  const m = b.dataset.tsel, s = m === "todos" ? C.temas.map(t => t.n) : m === "ninguno" ? [] : studied();
+  const m = b.dataset.tsel, s = m === "todos" ? conMaterial() : m === "ninguno" ? [] : studied();
   $("#tpick").innerHTML = pickHTML("tp", s); saveLocal("tsel", s); tInfo();
 }));
 $("#tstart").addEventListener("click", () => {
@@ -706,7 +753,7 @@ function drawTest(){
     <div class="row between"><b>${T.done ? "Corrección" : "Test en curso"} · ${T.qs.length} preguntas</b>${T.done ? "" : `<span class="status" id="tprog"></span>`}</div>
     ${T.done ? scoreHTML() : ""}
     ${T.qs.map((q, i) => `<div class="tq" data-comment-target>
-      <div class="qt"><span class="qn">${i+1}.</span>${esc(q.q)} <span class="mono muted">${q.real ? "T.of. " + esc(q.tof || "?") : "T" + q.n}</span></div>
+      <div class="qt"><span class="qn">${i+1}.</span>${esc(q.q)} <span class="mono muted">Tema ${esc(q.real ? q.tof || "?" : q.of)}</span></div>
       <div class="opts">${q.o.map((o, k) => {
         let cls = "opt"; if (!T.done && T.ans[i] === k) cls += " sel";
         if (T.done){ if (k === q.ok) cls += " right"; else if (T.ans[i] === k && q.ok !== null) cls += " wrong"; }
@@ -743,7 +790,7 @@ function renderHist(){
   const t = $("#thist"); if (!t) return;
   if (!tests.length){ t.innerHTML = `<tr><td class="muted">Aún no has hecho ningún test. Los resultados aparecerán aquí y se usan para «Solo preguntas que he fallado».</td></tr>`; return; }
   t.innerHTML = `<tr><th>Fecha</th><th>Temas</th><th>Preg.</th><th>Aciertos</th><th>Fallos</th><th>Blanco</th><th>Nota</th></tr>` +
-    tests.slice(0, 30).map(x => `<tr><td>${fmtY(x.fecha.slice(0,10))}</td><td>${esc((x.temas||[]).join(", "))}</td><td>${x.n}</td><td>${x.ok}</td><td>${x.mal}</td><td>${x.blanco}</td><td><b>${(+x.nota).toFixed(2)}</b></td></tr>`).join("");
+    tests.slice(0, 30).map(x => `<tr><td>${fmtY(x.fecha.slice(0,10))}</td><td>${esc((x.temas||[]).map(k => typeof k === "number" ? "cap. " + k : k).join(", "))}</td><td>${x.n}</td><td>${x.ok}</td><td>${x.mal}</td><td>${x.blanco}</td><td><b>${(+x.nota).toFixed(2)}</b></td></tr>`).join("");
 }
 
 // ---------- REPORTES ----------
